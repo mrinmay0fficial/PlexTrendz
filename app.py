@@ -2,65 +2,94 @@ import streamlit as st
 import scrapetube
 import pandas as pd
 import plotly.express as px
+from collections import Counter
+import re
 
-# UI Setup with your signature styling
-st.set_page_config(page_title="PlexTrendz", page_icon="🎬", layout="wide")
+# UI Setup
+st.set_page_config(page_title="PlexTrendz Pro", page_icon="🎬", layout="wide")
 
+# Custom CSS for that "Premium" feel
 st.markdown("""
     <style>
-    .main { background-color: #0a0a0f; color: #f0eeff; }
-    .stMetric { background-color: #1e1e28; padding: 15px; border-radius: 10px; border: 1px solid rgba(124,106,247,0.2); }
+    .main { background-color: #0a0a0f; }
+    .stMetric { border: 1px solid #7c6af7; border-radius: 10px; padding: 10px; background: #1e1e28; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🎬 PlexTrendz")
-st.subheader("Data-Driven YouTube Analysis (No API Required)")
+st.title("🎬 PlexTrendz Pro")
+st.caption("Advanced YouTube Metadata & Keyword Intelligence System")
 
-# Sidebar Settings
+# Sidebar
 with st.sidebar:
-    st.header("Search Settings")
-    target_topic = st.text_input("Niche/Keyword", "Gaming Cinematics")
-    limit = st.slider("Videos to Analyze", 10, 100, 30)
-    sort_by = st.selectbox("Sort Strategy", ["relevance", "view_count", "upload_date", "rating"])
+    st.header("Control Panel")
+    target_topic = st.text_input("Niche/Keyword", "Data Science Roadmap")
+    limit = st.slider("Deep Scan Limit", 20, 100, 50)
+    sort_by = st.selectbox("Algorithm Strategy", ["relevance", "view_count", "upload_date"])
+    st.divider()
+    st.info("Tip: Higher scan limits provide better keyword trends but take longer.")
 
 def fetch_data(query, video_limit, sort):
     videos = scrapetube.get_search(query, limit=video_limit, sort_by=sort)
     data = []
-    for video in videos:
-        # Extract title and ID
-        title_data = video.get('title', {}).get('runs', [{}])[0].get('text', 'Unknown Title')
+    all_titles_text = ""
+    
+    for i, video in enumerate(videos):
+        title = video.get('title', {}).get('runs', [{}])[0].get('text', 'Unknown')
         v_id = video.get('videoId')
-        
-        # Views handling (Scrapetube returns text like "1.2M views")
         view_text = video.get('viewCountText', {}).get('simpleText', '0 views')
         
+        all_titles_text += " " + title.lower()
+        
         data.append({
-            'Title': title_data,
+            'Rank': i + 1,
+            'Title': title,
             'Views': view_text,
-            'Title Length': len(title_data),
+            'Title Length': len(title),
             'Link': f"https://youtube.com/watch?v={v_id}"
         })
-    return pd.DataFrame(data)
+    return pd.DataFrame(data), all_titles_text
 
-if st.button("Start PlexTrendz Analysis"):
-    with st.spinner("Analyzing YouTube trends..."):
-        df = fetch_data(target_topic, limit, sort_by)
+if st.button("Execute Deep Scan"):
+    with st.spinner("Mining YouTube Metadata..."):
+        df, raw_text = fetch_data(target_topic, limit, sort_by)
         
         if not df.empty:
-            # Metrics
-            avg_len = int(df['Title Length'].mean())
-            st.metric("Avg. Optimal Title Length", f"{avg_len} Chars")
+            # --- ROW 1: Metrics ---
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.metric("Optimal Title Length", f"{int(df['Title Length'].mean())} chars")
+            with c2:
+                # Basic Keyword Extractor
+                words = re.findall(r'\w+', raw_text)
+                common_words = [w for w in words if len(w) > 3 and w not in ['youtube', 'video', '2025', '2026']]
+                top_word = Counter(common_words).most_common(1)[0][0]
+                st.metric("Hot Keyword", f"'{top_word}'")
+            with c3:
+                st.metric("Competition Strength", "High" if limit > 40 else "Medium")
+
+            # --- ROW 2: Charts ---
+            col_a, col_b = st.columns(2)
             
-            # Scatter Plot: Title Length vs Ranking
-            df['Rank'] = range(1, len(df) + 1)
-            fig = px.scatter(df, x="Title Length", y="Rank", hover_name="Title", 
-                             template="plotly_dark", title="Title Length vs Search Rank",
-                             color_discrete_sequence=['#38d9a9'])
-            fig.update_yaxes(autorange="reversed") # Rank 1 at top
-            st.plotly_chart(fig, use_container_width=True)
+            with col_a:
+                st.subheader("Title Length vs. Search Rank")
+                fig1 = px.scatter(df, x="Title Length", y="Rank", hover_name="Title", 
+                                 template="plotly_dark", color="Title Length",
+                                 color_continuous_scale="RdYlGn_r")
+                fig1.update_yaxes(autorange="reversed")
+                st.plotly_chart(fig1, use_container_width=True)
+                
+            with col_b:
+                st.subheader("Keyword Frequency (Top 10)")
+                word_counts = Counter(common_words).most_common(10)
+                word_df = pd.DataFrame(word_counts, columns=['Keyword', 'Frequency'])
+                fig2 = px.bar(word_df, x="Frequency", y="Keyword", orientation='h',
+                              template="plotly_dark", color="Frequency")
+                st.plotly_chart(fig2, use_container_width=True)
+
+            # --- ROW 3: Table ---
+            st.divider()
+            st.subheader("Raw Competitive Intelligence")
+            st.dataframe(df, use_container_width=True)
             
-            # Data Table
-            st.subheader("Top Results Detailed View")
-            st.dataframe(df[['Title', 'Views', 'Title Length', 'Link']], use_container_width=True)
         else:
-            st.error("No data found for this keyword.")
+            st.error("No results found.")
